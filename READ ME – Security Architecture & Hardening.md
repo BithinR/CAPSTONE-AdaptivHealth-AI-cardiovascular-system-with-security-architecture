@@ -54,7 +54,7 @@ checklist.
 | Authorization | RBAC + consent gating | Admins explicitly excluded from PHI access |
 | Data at rest | AES-256-GCM + RDS encryption | Field-level encryption layered on top of database encryption |
 | Data in transit | TLS 1.3 | Enforced at every network hop |
-| Infrastructure | Localhost-bound backend | FastAPI unreachable except through the reverse proxy |
+| Infrastructure | AWS VPC, 3-layer TLS | Private RDS subnet, localhost-bound backend, defense in depth |
 | AI integration | De-identification | PHI stripped before any data reaches a third-party model |
 | Audit | Append-only logging | Every PHI access recorded with actor, action, and consent basis |
 
@@ -172,6 +172,37 @@ reading PHI in plaintext. Field-level encryption means even a raw
 
 ## Network & Infrastructure Security
 
+The production deployment runs on AWS (ap-south-1), with the security
+model built around defense in depth: no single layer is trusted to be the
+only thing standing between the internet and patient data.
+
+### Request Path
+
+```
+Internet
+  → API Gateway      (TLS termination #1, throttling, custom domain)
+  → VPC Link
+  → Application Load Balancer  (TLS termination #2, health checks)
+  → EC2 (NGINX)       (TLS termination #3, reverse proxy)
+  → FastAPI on 127.0.0.1:8080  (unreachable from outside the instance)
+  → RDS PostgreSQL    (private subnet, no public access, SSL enforced)
+```
+
+Three independent TLS termination points before a request reaches
+application code, and the backend process itself is not directly
+addressable from the network at all.
+
+### VPC & Network Segmentation
+
+- Custom VPC (`10.0.0.0/16`) with public and private subnets
+- EC2 sits in the public subnet (behind the ALB and security group); RDS
+  sits in a private subnet with no route to the internet gateway
+- Security group on RDS only accepts connections from the EC2 security
+  group, not from any CIDR range
+- Security group on EC2 allows inbound only on 443 (from the ALB) and 22
+  (SSH, restricted to a specific IP); port 8080, where FastAPI actually
+  listens, has no inbound rule at all
+
 > **FastAPI is bound to `127.0.0.1`, not `0.0.0.0`.** This was an actual
 > incident during the build: the app was initially deployed listening on
 > all interfaces, reachable directly on the EC2 public IP on port 8080,
@@ -179,12 +210,34 @@ reading PHI in plaintext. Field-level encryption means even a raw
 > fixed via `netstat` after restarting the correct systemd unit, a stale
 > process on the old binding masked the fix on the first attempt. Included
 > here as a realistic example of a control that looked correct in code but
-> wasn't actually live in practice.
+> wasn't actually live in practice. The security group rule blocking 8080
+> is what actually stopped external access while the binding itself was
+> still wrong, which is the point of layering controls rather than relying
+> on one.
 
-- The security group denies inbound traffic on port 8080 entirely, as
-  defense in depth even after the localhost fix
+### IAM & Key Management
+
+- RDS encryption key managed through AWS KMS, scoped to that resource
+  rather than reusing a shared account-wide key
+- IAM roles follow least privilege for the services that need them (EC2
+  instance role for CloudWatch/S3 access, no long-lived access keys
+  embedded in application code)
+- TLS certificates issued and rotated through AWS Certificate Manager for
+  the API Gateway and ALB termination points; the NGINX-level certificate
+  uses Let's Encrypt with automated renewal
+
+### Monitoring
+
+- CloudWatch alarms on RDS CPU utilization, free storage space, and
+  database connection count (the connection-count alarm uses anomaly
+  detection rather than a fixed threshold, to catch unusual patterns
+  rather than only hard limits)
+- Alarms route to SNS for notification
+
+### Other
+
 - RDS has no public accessibility; it's reachable only from the EC2
-  security group
+  security group, as noted above
 - FastAPI's auto-generated `/docs` (Swagger UI) is disabled in production.
   An interactive, unauthenticated API explorer is unnecessary attack
   surface once the system isn't just being tested locally
@@ -241,12 +294,17 @@ prevention and availability, not adversarial ML security.
 
 ## Audit & Compliance
 
-- CloudTrail logs all AWS API-level activity, multi-region, with log
-  validation enabled and a 6-year retention target for DHA alignment
-- Every PHI access is logged at the application layer: actor, action,
-  timestamp, IP address, and the consent record it was authorized under
-- The audit table is append-only at the application layer; no delete or
-  update path is exposed
+- **AWS CloudTrail**: multi-region trail logging all AWS API-level
+  activity (who called what, from where, on which resource), with log
+  file validation enabled so the trail is tamper-evident, stored in a
+  dedicated S3 bucket, and targeting a 6-year retention window for DHA
+  alignment
+- **Application-level audit log**: every PHI access is recorded
+  independently of CloudTrail, at the application layer, capturing actor,
+  action, timestamp, IP address, and the specific consent record it was
+  authorized under
+- The application audit table is append-only; no delete or update path is
+  exposed, so the log can't be quietly edited after the fact
 
 ---
 
