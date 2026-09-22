@@ -101,6 +101,9 @@ unfinished rather than deliberately excluded.
 > noting specifically because it demonstrates handling a live credential
 > migration rather than only picking the "right" algorithm on day one.
 
+<img width="1838" height="604" alt="Screenshot 2026-04-12 214652" src="https://github.com/user-attachments/assets/a36bb634-448a-4daf-bf4a-3667cd925c09" />
+
+
 ### Account Lockout
 
 - 3 failed attempts trigger a 15-minute lockout
@@ -109,6 +112,8 @@ unfinished rather than deliberately excluded.
 - Lockout state is checked *before* password verification runs, avoiding a
   timing side-channel that would otherwise reveal whether an account exists
   or is simply locked
+
+<img width="599" height="711" alt="Screenshot 2026-04-12 204432" src="https://github.com/user-attachments/assets/702ade58-0675-49e9-9f53-b6f1427132ac" />
 
 ### JWT Architecture
 
@@ -142,6 +147,7 @@ doesn't grant access; there must be an active `APPROVED` consent entry
 scoped to that specific patient. Consent has its own state machine
 (`PENDING → APPROVED → REVOKED / EXPIRED`), and revocation is immediate
 rather than eventually consistent.
+<img width="1021" height="885" alt="Screenshot 2026-04-12 190241" src="https://github.com/user-attachments/assets/5cb1bfcf-75d5-4658-a23f-e3ae710084c9" />
 
 ---
 
@@ -167,6 +173,8 @@ reading PHI in plaintext. Field-level encryption means even a raw
   separate termination points, detailed in the infrastructure section of
   the main README)
 - PostgreSQL connections require SSL
+
+<img width="1295" height="988" alt="Screenshot 2026-04-12 202948" src="https://github.com/user-attachments/assets/1ce72517-3c9b-4cca-81ca-1bc479379daf" />
 
 ---
 
@@ -203,6 +211,8 @@ addressable from the network at all.
   (SSH, restricted to a specific IP); port 8080, where FastAPI actually
   listens, has no inbound rule at all
 
+<img width="1072" height="333" alt="Screenshot 2026-03-10 181921" src="https://github.com/user-attachments/assets/b814fae5-d985-4ce4-8ef8-c677ea77820e" />
+
 > **FastAPI is bound to `127.0.0.1`, not `0.0.0.0`.** This was an actual
 > incident during the build: the app was initially deployed listening on
 > all interfaces, reachable directly on the EC2 public IP on port 8080,
@@ -234,6 +244,8 @@ addressable from the network at all.
   rather than only hard limits)
 - Alarms route to SNS for notification
 
+<img width="914" height="434" alt="Screenshot 2026-09-23 003028" src="https://github.com/user-attachments/assets/18d420b4-a6fd-4377-9cd9-8200b7e2c741" />
+
 ### Other
 
 - RDS has no public accessibility; it's reachable only from the EC2
@@ -241,6 +253,19 @@ addressable from the network at all.
 - FastAPI's auto-generated `/docs` (Swagger UI) is disabled in production.
   An interactive, unauthenticated API explorer is unnecessary attack
   surface once the system isn't just being tested locally
+
+### Dashboard Hosting
+
+The React clinician dashboard is deployed separately from the backend, on
+Vercel, with a custom domain (`dashboard-adaptivhealthuowd.xyz`) attached
+on top of Vercel's own deployment infrastructure. TLS for that domain is
+provisioned and auto-renewed by Vercel (Let's Encrypt-issued, matching the
+same 90-day renewal cycle as the backend's own certificate), independent
+of the AWS-side certificate chain described above. This is a deliberate
+split rather than an oversight: the dashboard is a static frontend with no
+direct database access, so it doesn't need to sit behind the same
+API Gateway/ALB path as the backend, only to talk to it over HTTPS like
+any other client.
 
 ---
 
