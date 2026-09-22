@@ -12,31 +12,6 @@ Adaptiv Health is a clinical-grade health monitoring system designed for:
 - **Backend** — Secure data management with ML-powered risk prediction, anomaly detection, and AI coaching
 
 ------------------------------------
-
-## How to copy the Project Code
-
-Repository Link: https://github.com/Massoud3/AdaptivHealth
-
-Steps to copy to GitHub account:
-
-1.Log in to your GitHub account
-
-2.Go to: https://github.com/new/import
-
-3.In "Your source repository URL", paste:
-https://github.com/Massoud3/AdaptivHealth
-
-4.Set the repository name (e.g. AdaptivHealth)
-
-5.Set visibility to Public or Private
-
-6.Click "Begin import"
-
-## For local copy
-
-git clone https://github.com/Massoud3/AdaptivHealth.git
-
-
 ## ----------Quick Start------------
 
 ```bash
